@@ -13,17 +13,35 @@ import (
 	"time"
 )
 
+func main() {
+	scanner := bufio.NewScanner(os.Stdin)
+	cmds := getCliCommands()
+	cache := pokecache.NewCache(30 * time.Second)
+	client := pokeapi.NewAPIClient(cache)
+	config := cliCommandConfig{apiClient: &client, capturedPokemon: make(map[string]pokeapi.PokemonDetailResponse)}
+	for {
+		fmt.Print("pokedex > ")
+		scanner.Scan()
+		line := scanner.Text()
+		words := strings.Split(line, " ")
+		command := words[0]
+		if cmd, ok := cmds[command]; ok {
+			err := cmd.callback(&config, words[1:]...)
+			if err != nil {
+				fmt.Printf("Command error: %v", err)
+				commandHelp(&config)
+			}
+		} else {
+			commandHelp(&config)
+		}
+	}
+}
+
 type cliCommandConfig struct {
 	next            string
 	prev            string
 	apiClient       *pokeapi.APIClient
-	capturedPokemon map[string]Pokemon
-}
-
-type Pokemon struct {
-	name           string
-	id             int
-	baseExperience int
+	capturedPokemon map[string]pokeapi.PokemonDetailResponse
 }
 
 type cliCommand struct {
@@ -70,6 +88,11 @@ func getCliCommands() map[string]cliCommand {
 			name:        "catch <pokemon_name>",
 			description: "Tries to catch a pokemon",
 			callback:    commandCatchPokemon,
+		},
+		"inspect": {
+			name:        "inspect <pokemon_name>",
+			description: "Shows the details of the pokemon you have caught",
+			callback:    commandInspectPokemon,
 		},
 	}
 }
@@ -179,11 +202,7 @@ func commandCatchPokemon(config *cliCommandConfig, args ...string) error {
 
 	if randChance > totalDifficulty {
 		fmt.Printf("%v was caught!\n", pokemon.Name)
-		config.capturedPokemon[pokemon.Name] = Pokemon{
-			name:           pokemon.Name,
-			id:             pokemon.ID,
-			baseExperience: pokemon.BaseExperience,
-		}
+		config.capturedPokemon[pokemon.Name] = pokemon
 	} else {
 		fmt.Printf("%v escaped!\n", pokemon.Name)
 	}
@@ -191,26 +210,28 @@ func commandCatchPokemon(config *cliCommandConfig, args ...string) error {
 	return nil
 }
 
-func main() {
-	scanner := bufio.NewScanner(os.Stdin)
-	cmds := getCliCommands()
-	cache := pokecache.NewCache(30 * time.Second)
-	client := pokeapi.NewAPIClient(cache)
-	config := cliCommandConfig{apiClient: &client, capturedPokemon: make(map[string]Pokemon)}
-	for {
-		fmt.Print("pokedex > ")
-		scanner.Scan()
-		line := scanner.Text()
-		words := strings.Split(line, " ")
-		command := words[0]
-		if cmd, ok := cmds[command]; ok {
-			err := cmd.callback(&config, words[1:]...)
-			if err != nil {
-				fmt.Printf("Command error: %v", err)
-				commandHelp(&config)
-			}
-		} else {
-			commandHelp(&config)
-		}
+func commandInspectPokemon(config *cliCommandConfig, args ...string) error {
+	if len(args) < 1 {
+		return errors.New("missing pokemon name")
 	}
+
+	pokemonName := args[0]
+	pokemon, ok := config.capturedPokemon[pokemonName]
+	if !ok {
+		return fmt.Errorf("you need to caught %v to see its information", pokemonName)
+	}
+
+	fmt.Printf("Name: %v\n", pokemon.Name)
+	fmt.Printf("Height: %v\n", pokemon.Height)
+	fmt.Printf("Weight: %v\n", pokemon.Weight)
+	fmt.Println("Stats:")
+	for _, stat := range pokemon.Stats {
+		fmt.Printf("  - %v: %v\n", stat.Stat.Name, stat.BaseStat)
+	}
+	fmt.Println("Types:")
+	for _, t := range pokemon.Types {
+		fmt.Printf("  - %v\n", t.Type.Name)
+	}
+
+	return nil
 }
