@@ -23,13 +23,9 @@ func NewAPIClient(cache Cache) APIClient {
 }
 
 func (api *APIClient) GetMapLocationAreas(urlParams string) (LocationAreasResponse, error) {
-	locationResponse := LocationAreasResponse{}
+	resp := LocationAreasResponse{}
 	body := api.request("/location-area" + urlParams)
-	err := json.Unmarshal(body, &locationResponse)
-	if err != nil {
-		return locationResponse, err
-	}
-	return locationResponse, nil
+	return unmarshalResponse(resp, body)
 }
 
 type LocationAreasResponse struct {
@@ -43,13 +39,9 @@ type LocationAreasResponse struct {
 }
 
 func (api *APIClient) GetMapLocationArea(area string) (LocationAreaResponse, error) {
-	locationResponse := LocationAreaResponse{}
+	resp := LocationAreaResponse{}
 	body := api.request("/location-area/" + area)
-	err := json.Unmarshal(body, &locationResponse)
-	if err != nil {
-		return locationResponse, err
-	}
-	return locationResponse, nil
+	return unmarshalResponse(resp, body)
 }
 
 type LocationAreaResponse struct {
@@ -61,6 +53,26 @@ type LocationAreaResponse struct {
 			URL  string `json:"url"`
 		} `json:"pokemon"`
 	} `json:"pokemon_encounters"`
+}
+
+func (api *APIClient) GetPokemonDetail(pokemonName string) (PokemonDetailResponse, error) {
+	resp := PokemonDetailResponse{}
+	body := api.request("/pokemon/" + pokemonName)
+	return unmarshalResponse(resp, body)
+}
+
+type PokemonDetailResponse struct {
+	ID             int    `json:"id"`
+	Name           string `json:"name"`
+	BaseExperience int    `json:"base_experience"`
+}
+
+func unmarshalResponse[T any](resp T, body []byte) (T, error) {
+	err := json.Unmarshal(body, &resp)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
 }
 
 func (api *APIClient) request(path string) []byte {

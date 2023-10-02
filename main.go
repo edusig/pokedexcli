@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"internal/pokeapi"
 	"internal/pokecache"
+	"math/rand"
 	"net/url"
 	"os"
 	"strings"
@@ -13,9 +14,16 @@ import (
 )
 
 type cliCommandConfig struct {
-	Next      string
-	Previous  string
-	apiClient *pokeapi.APIClient
+	next            string
+	prev            string
+	apiClient       *pokeapi.APIClient
+	capturedPokemon map[string]Pokemon
+}
+
+type Pokemon struct {
+	name           string
+	id             int
+	baseExperience int
 }
 
 type cliCommand struct {
@@ -58,6 +66,11 @@ func getCliCommands() map[string]cliCommand {
 			description: "Explore an area and find the pokemon that resides there.",
 			callback:    commandExplore,
 		},
+		"catch": {
+			name:        "catch <pokemon_name>",
+			description: "Tries to catch a pokemon",
+			callback:    commandCatchPokemon,
+		},
 	}
 }
 
@@ -82,8 +95,8 @@ func commandExit(*cliCommandConfig, ...string) error {
 
 func commandMap(config *cliCommandConfig, _ ...string) error {
 	urlParams := ""
-	if config.Next != "" {
-		parsedNext, err := url.Parse(config.Next)
+	if config.next != "" {
+		parsedNext, err := url.Parse(config.next)
 		if err == nil {
 			urlParams = "?" + parsedNext.RawQuery
 		}
@@ -93,8 +106,8 @@ func commandMap(config *cliCommandConfig, _ ...string) error {
 		fmt.Println("Could not get the locations from the API. Try again later.")
 	}
 
-	config.Next = getPointerValueOrDefault(locationAreas.Next, "")
-	config.Previous = getPointerValueOrDefault(locationAreas.Previous, "")
+	config.next = getPointerValueOrDefault(locationAreas.Next, "")
+	config.prev = getPointerValueOrDefault(locationAreas.Previous, "")
 
 	for _, location := range locationAreas.Results {
 		fmt.Println(location.Name)
@@ -105,8 +118,8 @@ func commandMap(config *cliCommandConfig, _ ...string) error {
 
 func commandMapB(config *cliCommandConfig, _ ...string) error {
 	urlParams := ""
-	if config.Previous != "" {
-		parsedPrev, err := url.Parse(config.Previous)
+	if config.prev != "" {
+		parsedPrev, err := url.Parse(config.prev)
 		if err == nil {
 			urlParams = "?" + parsedPrev.RawQuery
 		}
@@ -116,8 +129,8 @@ func commandMapB(config *cliCommandConfig, _ ...string) error {
 		return errors.New("could not get the locations from the API. Try again later")
 	}
 
-	config.Next = getPointerValueOrDefault(locationAreas.Next, "")
-	config.Previous = getPointerValueOrDefault(locationAreas.Previous, "")
+	config.next = getPointerValueOrDefault(locationAreas.Next, "")
+	config.prev = getPointerValueOrDefault(locationAreas.Previous, "")
 
 	for _, location := range locationAreas.Results {
 		fmt.Println(location.Name)
@@ -144,12 +157,46 @@ func commandExplore(config *cliCommandConfig, args ...string) error {
 	return nil
 }
 
+func commandCatchPokemon(config *cliCommandConfig, args ...string) error {
+	if len(args) < 1 {
+		return errors.New("missing pokemon name")
+	}
+	pokemonName := args[0]
+	pokemon, err := config.apiClient.GetPokemonDetail(pokemonName)
+	if err != nil {
+		return errors.New("could not get pokemon detail. Try again later")
+	}
+
+	fmt.Printf("Throwing a Pokeball at %v...\n", pokemonName)
+
+	maxDifficulty := 900
+	minDifficulty := 190
+	randDifficulty := rand.Intn(maxDifficulty - pokemon.BaseExperience - minDifficulty)
+	totalDifficulty := minDifficulty + randDifficulty + pokemon.BaseExperience
+
+	maxChance := 1000
+	randChance := rand.Intn(maxChance)
+
+	if randChance > totalDifficulty {
+		fmt.Printf("%v was caught!\n", pokemon.Name)
+		config.capturedPokemon[pokemon.Name] = Pokemon{
+			name:           pokemon.Name,
+			id:             pokemon.ID,
+			baseExperience: pokemon.BaseExperience,
+		}
+	} else {
+		fmt.Printf("%v escaped!\n", pokemon.Name)
+	}
+
+	return nil
+}
+
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	cmds := getCliCommands()
 	cache := pokecache.NewCache(30 * time.Second)
 	client := pokeapi.NewAPIClient(cache)
-	config := cliCommandConfig{apiClient: &client}
+	config := cliCommandConfig{apiClient: &client, capturedPokemon: make(map[string]Pokemon)}
 	for {
 		fmt.Print("pokedex > ")
 		scanner.Scan()
