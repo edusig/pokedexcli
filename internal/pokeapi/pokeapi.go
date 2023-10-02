@@ -21,9 +21,18 @@ type LocationAreaResponse struct {
 	Results  []LocationArea `json:"results"`
 }
 
-func GetMapLocationAreas(urlParams string) (LocationAreaResponse, error) {
+type Cache interface {
+	Add(key string, val []byte)
+	Get(key string) ([]byte, bool)
+}
+
+type APIClient struct {
+	cache Cache
+}
+
+func (api *APIClient) GetMapLocationAreas(urlParams string) (LocationAreaResponse, error) {
 	locationResponse := LocationAreaResponse{}
-	body := request("/location-area" + urlParams)
+	body := api.request("/location-area" + urlParams)
 	err := json.Unmarshal(body, &locationResponse)
 	if err != nil {
 		return locationResponse, err
@@ -31,8 +40,14 @@ func GetMapLocationAreas(urlParams string) (LocationAreaResponse, error) {
 	return locationResponse, nil
 }
 
-func request(path string) []byte {
-	res, err := http.Get(API_URL + path)
+func (api *APIClient) request(path string) []byte {
+	url := API_URL + path
+	if api.cache != nil {
+		if val, ok := api.cache.Get(url); ok {
+			return val
+		}
+	}
+	res, err := http.Get(url)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -44,5 +59,10 @@ func request(path string) []byte {
 	if err != nil {
 		log.Fatal(err)
 	}
+	api.cache.Add(url, body)
 	return body
+}
+
+func NewAPIClient(cache Cache) APIClient {
+	return APIClient{cache: cache}
 }

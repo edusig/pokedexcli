@@ -4,19 +4,29 @@ import (
 	"bufio"
 	"fmt"
 	"internal/pokeapi"
+	"internal/pokecache"
 	"net/url"
 	"os"
+	"time"
 )
 
 type cliCommandConfig struct {
-	Next     string
-	Previous string
+	Next      string
+	Previous  string
+	apiClient *pokeapi.APIClient
 }
 
 type cliCommand struct {
 	name        string
 	description string
 	callback    func(*cliCommandConfig) error
+}
+
+func getPointerValueOrDefault[T any](val *T, def T) T {
+	if val == nil {
+		return def
+	}
+	return *val
 }
 
 func getCliCommands() map[string]cliCommand {
@@ -71,17 +81,13 @@ func commandMap(config *cliCommandConfig) error {
 			urlParams = "?" + parsedNext.RawQuery
 		}
 	}
-	locationAreas, err := pokeapi.GetMapLocationAreas(urlParams)
+	locationAreas, err := config.apiClient.GetMapLocationAreas(urlParams)
 	if err != nil {
 		fmt.Println("Could not get the locations from the API. Try again later.")
 	}
 
-	if locationAreas.Next != nil {
-		config.Next = *locationAreas.Next
-	}
-	if locationAreas.Previous != nil {
-		config.Previous = *locationAreas.Previous
-	}
+	config.Next = getPointerValueOrDefault(locationAreas.Next, "")
+	config.Previous = getPointerValueOrDefault(locationAreas.Previous, "")
 
 	for _, location := range locationAreas.Results {
 		fmt.Println(location.Name)
@@ -98,17 +104,13 @@ func commandMapB(config *cliCommandConfig) error {
 			urlParams = "?" + parsedPrev.RawQuery
 		}
 	}
-	locationAreas, err := pokeapi.GetMapLocationAreas(urlParams)
+	locationAreas, err := config.apiClient.GetMapLocationAreas(urlParams)
 	if err != nil {
 		fmt.Println("Could not get the locations from the API. Try again later.")
 	}
 
-	if locationAreas.Next != nil {
-		config.Next = *locationAreas.Next
-	}
-	if locationAreas.Previous != nil {
-		config.Previous = *locationAreas.Previous
-	}
+	config.Next = getPointerValueOrDefault(locationAreas.Next, "")
+	config.Previous = getPointerValueOrDefault(locationAreas.Previous, "")
 
 	for _, location := range locationAreas.Results {
 		fmt.Println(location.Name)
@@ -119,8 +121,11 @@ func commandMapB(config *cliCommandConfig) error {
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	cmds := getCliCommands()
-	config := cliCommandConfig{}
+	cache := pokecache.NewCache(30 * time.Second)
+	client := pokeapi.NewAPIClient(cache)
+	config := cliCommandConfig{apiClient: &client}
 	for {
+		fmt.Printf("Current config %v\n", config)
 		fmt.Print("pokedex > ")
 		scanner.Scan()
 		line := scanner.Text()
